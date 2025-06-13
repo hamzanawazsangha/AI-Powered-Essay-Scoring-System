@@ -1,0 +1,8 @@
+streamlit
+langchain
+huggingface_hub
+python-docx
+pymupdf
+pandas
+langdetect
+language-tool-python
