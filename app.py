@@ -1,6 +1,5 @@
 import streamlit as st
-from langchain_community.llms import HuggingFaceHub  # updated import
-from langchain.chat_models import ChatHuggingFace
+from langchain_community.llms import HuggingFaceEndpoint  # ✅ updated
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 import tempfile
@@ -32,18 +31,18 @@ rubrics = {
 }
 rubric = rubrics[level]
 
-# Load open-source LLM
-llm = ChatHuggingFace(
+# ✅ Load open-source LLM using HuggingFaceEndpoint
+llm = HuggingFaceEndpoint(
     repo_id="HuggingFaceH4/zephyr-7b-beta",
     huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
-    model_kwargs={"temperature": 0.5, "max_new_tokens": 512}
+    temperature=0.5,
+    max_new_tokens=512
 )
 
 # Prompt
 prompt = PromptTemplate(
     input_variables=["essay", "criteria", "max_score", "language"],
-    template="""
-You are an expert essay evaluator fluent in {language}. Evaluate the following essay (written in {language}) using the rubric and give a score out of {max_score}.
+    template="""You are an expert essay evaluator fluent in {language}. Evaluate the following essay (written in {language}) using the rubric and give a score out of {max_score}.
 
 Essay:
 {essay}
