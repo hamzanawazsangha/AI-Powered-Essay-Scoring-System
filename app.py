@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain_community.llms import HuggingFaceEndpoint  # ✅ updated
+from langchain_community.llms import HuggingFaceEndpoint
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 import tempfile
@@ -10,7 +10,6 @@ import pandas as pd
 from langdetect import detect
 import language_tool_python
 from dotenv import load_dotenv
-import re
 
 # Load environment variables (e.g., Hugging Face API token)
 load_dotenv()
@@ -31,13 +30,17 @@ rubrics = {
 }
 rubric = rubrics[level]
 
-# ✅ Load open-source LLM using HuggingFaceEndpoint
-llm = HuggingFaceEndpoint(
-    repo_id="HuggingFaceH4/zephyr-7b-beta",
-    huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
-    temperature=0.5,
-    max_new_tokens=512
-)
+# Load open-source LLM using HuggingFaceEndpoint
+try:
+    llm = HuggingFaceEndpoint(
+        repo_id="HuggingFaceH4/zephyr-7b-beta",
+        huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+        temperature=0.5,
+        max_new_tokens=512
+    )
+except Exception as e:
+    st.error(f"Failed to initialize LLM: {str(e)}")
+    st.stop()
 
 # Prompt
 prompt = PromptTemplate(
@@ -61,28 +64,44 @@ chain = LLMChain(prompt=prompt, llm=llm)
 
 # File handlers
 def extract_text_from_pdf(file):
-    with fitz.open(stream=file.read(), filetype="pdf") as doc:
-        return " ".join(page.get_text() for page in doc)
+    try:
+        with fitz.open(stream=file.read(), filetype="pdf") as doc:
+            return " ".join(page.get_text() for page in doc)
+    except Exception as e:
+        st.error(f"Error reading PDF: {str(e)}")
+        return ""
 
 def extract_text_from_docx(file):
-    doc = docx.Document(file)
-    return " ".join(para.text for para in doc.paragraphs)
+    try:
+        doc = docx.Document(file)
+        return " ".join(para.text for para in doc.paragraphs)
+    except Exception as e:
+        st.error(f"Error reading DOCX: {str(e)}")
+        return ""
 
 def highlight_grammar_issues(text):
+    if not text.strip():
+        return "", []
+    
     try:
         lang = detect(text)
-        tool = language_tool_python.LanguageTool(lang)
     except:
-        tool = language_tool_python.LanguageTool("en-US")
-    matches = tool.check(text)
-    highlighted = text
-    for match in reversed(matches):
-        start = match.offset
-        end = match.offset + match.errorLength
-        suggestion = ", ".join(match.replacements[:2]) if match.replacements else ""
-        replacement = f"**[{text[start:end]}](⚠️: {suggestion})**"
-        highlighted = highlighted[:start] + replacement + highlighted[end:]
-    return highlighted, matches
+        lang = "en-US"
+    
+    try:
+        tool = language_tool_python.LanguageTool(lang)
+        matches = tool.check(text)
+        highlighted = text
+        for match in reversed(matches):
+            start = match.offset
+            end = match.offset + match.errorLength
+            suggestion = ", ".join(match.replacements[:2]) if match.replacements else ""
+            replacement = f"**[{text[start:end]}](⚠️: {suggestion})**"
+            highlighted = highlighted[:start] + replacement + highlighted[end:]
+        return highlighted, matches
+    except Exception as e:
+        st.error(f"Grammar check failed: {str(e)}")
+        return text, []
 
 # Essay input
 st.subheader("📄 Upload Essay (PDF/DOCX) or Paste Text")
@@ -105,7 +124,7 @@ if "grades" not in st.session_state:
 
 # Evaluation
 if st.button("Evaluate Essay"):
-    if not essay_input:
+    if not essay_input.strip():
         st.warning("Please upload or paste an essay first.")
     else:
         with st.spinner("Detecting language..."):
@@ -113,14 +132,19 @@ if st.button("Evaluate Essay"):
                 detected_lang = detect(essay_input)
             except:
                 detected_lang = "unknown"
+                st.warning("Could not detect language, defaulting to English")
 
         with st.spinner("Evaluating essay..."):
-            result = chain.run(
-                essay=essay_input,
-                criteria=rubric,
-                max_score=max_score,
-                language=detected_lang
-            )
+            try:
+                result = chain.run(
+                    essay=essay_input,
+                    criteria=rubric,
+                    max_score=max_score,
+                    language=detected_lang
+                )
+            except Exception as e:
+                st.error(f"Evaluation failed: {str(e)}")
+                st.stop()
 
         with st.spinner("Checking grammar..."):
             highlighted_text, grammar_matches = highlight_grammar_issues(essay_input)
@@ -128,13 +152,15 @@ if st.button("Evaluate Essay"):
         st.success("✅ Evaluation complete!")
         st.subheader("📊 Evaluation Summary")
         st.markdown(f"**Detected Language**: `{detected_lang}`")
+        st.markdown(f"**Grammar Issues Found**: `{len(grammar_matches)}`")
 
         st.markdown("### ✨ Grammar Issues Highlighted")
         st.markdown(highlighted_text, unsafe_allow_html=True)
 
-        st.text_area("🗣️ Feedback", value=result, height=400)
+        st.markdown("### 🗣️ Feedback")
+        st.markdown(result)
 
-        score_line = [line for line in result.split("\n") if "Score" in line]
+        score_line = [line for line in result.split("\n") if "Score" in line or "score" in line]
         score = score_line[0].split(":")[-1].strip() if score_line else "N/A"
 
         st.session_state.grades.append({
@@ -142,7 +168,8 @@ if st.button("Evaluate Essay"):
             "Language": detected_lang,
             "Max Score": max_score,
             "Score": score,
-            "Feedback": result
+            "Feedback": result,
+            "Grammar Issues": len(grammar_matches)
         })
 
 # Admin Panel
@@ -150,9 +177,16 @@ st.sidebar.header("📁 Admin Panel")
 if st.sidebar.button("Export Grades"):
     if st.session_state.grades:
         df = pd.DataFrame(st.session_state.grades)
-        csv_path = os.path.join(tempfile.gettempdir(), "essay_grades.csv")
-        df.to_csv(csv_path, index=False)
-        with open(csv_path, "rb") as f:
-            st.sidebar.download_button("Download CSV", f, file_name="essay_grades.csv", mime="text/csv")
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.sidebar.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name="essay_grades.csv",
+            mime="text/csv"
+        )
     else:
         st.sidebar.warning("No grades to export yet.")
+
+if st.sidebar.button("Clear Grades"):
+    st.session_state.grades = []
+    st.sidebar.success("Grades cleared!")
