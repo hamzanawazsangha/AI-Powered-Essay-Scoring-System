@@ -1,10 +1,22 @@
-streamlit
-langchain
-langchain_community
-huggingface_hub
-python-dotenv
-python-docx
-PyMuPDF
-pandas
-langdetect
-language-tool-python
+# Core requirements
+streamlit==1.32.2
+langchain==0.1.13
+langchain-community==0.0.29
+huggingface-hub==0.22.2
+
+# Document processing
+python-docx==0.8.11
+pymupdf==1.23.26
+
+# Language tools
+langdetect==1.0.9
+language-tool-python==2.7.1
+
+# Data handling
+pandas==2.2.1
+
+# Environment management
+python-dotenv==1.0.1
+
+# HuggingFace inference (specific version to avoid 'post' error)
+httpx==0.27.0
