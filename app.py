@@ -8,7 +8,7 @@ import docx
 import fitz  # PyMuPDF
 import pandas as pd
 from langdetect import detect, LangDetectException
-from gingerit import GingerIt  # Replaced language-tool-python with gingerit
+from textblob import TextBlob  # Replaced gingerit with TextBlob
 from dotenv import load_dotenv
 from typing import Tuple, List
 
@@ -34,7 +34,7 @@ st.sidebar.header("Configuration")
 max_score = st.sidebar.selectbox("Maximum Score", [5, 10, 20, 50, 100], index=0)
 level = st.sidebar.selectbox("Student Level", ["Beginner", "Intermediate", "Advanced"], index=0)
 
-# Rubric definitions (unchanged)
+# Rubric definitions
 rubrics = {
     "Beginner": {
         "title": "Beginner Level Rubric",
@@ -77,7 +77,7 @@ def display_rubric(level: str) -> str:
 
 rubric = display_rubric(level)
 
-# Initialize LLM (unchanged)
+# Initialize LLM
 def initialize_llm() -> HuggingFaceHub:
     """Initialize the language model with error handling"""
     try:
@@ -96,7 +96,7 @@ def initialize_llm() -> HuggingFaceHub:
 
 llm = initialize_llm()
 
-# Prompt template (unchanged)
+# Prompt template
 prompt = PromptTemplate(
     input_variables=["essay", "criteria", "max_score", "language"],
     template="""As an expert essay evaluator fluent in {language}, please evaluate this essay according to the specified rubric. 
@@ -124,7 +124,7 @@ Please provide your evaluation in clear, structured markdown format."""
 
 chain = LLMChain(prompt=prompt, llm=llm)
 
-# File handlers (unchanged)
+# File handlers
 def extract_text_from_pdf(file) -> str:
     """Extract text content from PDF file"""
     try:
@@ -143,43 +143,34 @@ def extract_text_from_docx(file) -> str:
         st.error(f"Error reading DOCX: {str(e)}")
         return ""
 
-# Updated grammar checker using gingerit
+# Updated grammar checker using TextBlob
 def highlight_grammar_issues(text: str) -> Tuple[str, List]:
-    """Highlight grammar issues in the text using gingerit"""
+    """Highlight grammar issues in the text using TextBlob"""
     if not text.strip():
         return "", []
     
     try:
-        parser = GingerIt()
-        result = parser.parse(text)
-        highlighted = text
+        blob = TextBlob(text)
         corrections = []
+        highlighted = text
         
-        # Process each correction
-        for mistake in result.get('corrections', []):
-            start = mistake['start']
-            end = mistake['end']
-            suggestion = mistake.get('text', 'No suggestion')
-            
-            # Highlight the mistake
-            highlighted = (
-                highlighted[:start] + 
-                f"<span style='background-color: #ffcccc; border-bottom: 1px dashed red;' title='Suggested: {suggestion}'>{highlighted[start:end]}</span>" + 
-                highlighted[end:]
-            )
+        # Get suggested corrections
+        corrected = str(blob.correct())
+        
+        # Simple highlighting of the entire text when corrections exist
+        if corrected.lower() != text.lower():
+            highlighted = f"<span style='background-color: #ffcccc;'>Original: {text}</span><br><br><span style='background-color: #ccffcc;'>Suggested: {corrected}</span>"
             corrections.append({
-                'text': highlighted[start:end],
-                'suggestion': suggestion,
-                'start': start,
-                'end': end
+                'original': text,
+                'corrected': corrected
             })
         
         return highlighted, corrections
     except Exception as e:
         st.error(f"Grammar check failed: {str(e)}")
         return text, []
-        
-# Essay input section with better UX
+
+# Essay input section
 def get_essay_input() -> str:
     """Get essay input from either file upload or text area"""
     st.subheader("📄 Upload Essay (PDF/DOCX) or Paste Text")
@@ -254,10 +245,10 @@ def evaluate_essay() -> None:
     with col1:
         st.markdown(f"**Detected Language**: `{SUPPORTED_LANGUAGES.get(detected_lang, 'English')}`")
     with col2:
-        st.markdown(f"**Grammar Issues Found**: `{len(grammar_matches)}`")
+        st.markdown(f"**Grammar Suggestions**: `{len(grammar_matches)}`")
     
     # Grammar highlights
-    st.subheader("✨ Grammar Issues Highlighted")
+    st.subheader("✨ Grammar Suggestions")
     st.markdown(highlighted_text, unsafe_allow_html=True)
     
     # Feedback
@@ -277,7 +268,7 @@ def evaluate_essay() -> None:
         "Language": SUPPORTED_LANGUAGES.get(detected_lang, "English"),
         "Max Score": max_score,
         "Score": score,
-        "Grammar Issues": len(grammar_matches),
+        "Grammar Suggestions": len(grammar_matches),
         "Feedback": result
     })
 
