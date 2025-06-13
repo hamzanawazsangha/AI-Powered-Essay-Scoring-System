@@ -32,13 +32,12 @@ rubric = rubrics[level]
 
 # Initialize LLM with error handling
 try:
-    llm = HuggingFaceEndpoint(
-        endpoint_url="https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta",
-        huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
-        task="text-generation",
-        model_kwargs={
-            "temperature": 0.5,
-            "max_new_tokens": 512
+    llm = HuggingFaceHub(
+    repo_id="HuggingFaceH4/zephyr-7b-beta",
+    huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+    model_kwargs={
+        "temperature": 0.5,
+        "max_new_tokens": 512
         }
     )
 except Exception as e:
