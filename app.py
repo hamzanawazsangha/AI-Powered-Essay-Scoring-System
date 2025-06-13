@@ -8,7 +8,7 @@ import docx
 import fitz  # PyMuPDF
 import pandas as pd
 from langdetect import detect, LangDetectException
-from gingerit.gingerit import GingerIt  # Replaced language-tool-python with gingerit
+from gingerit import GingerIt  # Replaced language-tool-python with gingerit
 from dotenv import load_dotenv
 from typing import Tuple, List
 
