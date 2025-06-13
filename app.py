@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain import HuggingFaceHub
+from langchain_community.llms import HuggingFaceHub  # updated import
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 import tempfile
@@ -9,7 +9,11 @@ import fitz  # PyMuPDF
 import pandas as pd
 from langdetect import detect
 import language_tool_python
+from dotenv import load_dotenv
 import re
+
+# Load environment variables (e.g., Hugging Face API token)
+load_dotenv()
 
 st.set_page_config(page_title="Essay Grader", layout="wide")
 st.title("📝 Automated Essay Grading System (Multilingual + Grammar Highlights)")
@@ -30,6 +34,7 @@ rubric = rubrics[level]
 # Load open-source LLM
 llm = HuggingFaceHub(
     repo_id="HuggingFaceH4/zephyr-7b-beta",
+    huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
     model_kwargs={"temperature": 0.5, "max_new_tokens": 512}
 )
 
