@@ -11,7 +11,7 @@ from langdetect import detect
 import language_tool_python
 from dotenv import load_dotenv
 
-# Load environment variables (e.g., Hugging Face API token)
+# Load environment variables
 load_dotenv()
 
 st.set_page_config(page_title="Essay Grader", layout="wide")
@@ -30,19 +30,22 @@ rubrics = {
 }
 rubric = rubrics[level]
 
-# Load open-source LLM using HuggingFaceEndpoint
+# Initialize LLM with error handling
 try:
     llm = HuggingFaceEndpoint(
-        repo_id="HuggingFaceH4/zephyr-7b-beta",
+        endpoint_url="https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
-        temperature=0.5,
-        max_new_tokens=512
+        task="text-generation",
+        model_kwargs={
+            "temperature": 0.5,
+            "max_new_tokens": 512
+        }
     )
 except Exception as e:
     st.error(f"Failed to initialize LLM: {str(e)}")
     st.stop()
 
-# Prompt
+# Prompt template
 prompt = PromptTemplate(
     input_variables=["essay", "criteria", "max_score", "language"],
     template="""You are an expert essay evaluator fluent in {language}. Evaluate the following essay (written in {language}) using the rubric and give a score out of {max_score}.
