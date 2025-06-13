@@ -1,5 +1,6 @@
 import streamlit as st
 from langchain_community.llms import HuggingFaceHub  # updated import
+from langchain.chat_models import ChatHuggingFace
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 import tempfile
@@ -32,7 +33,7 @@ rubrics = {
 rubric = rubrics[level]
 
 # Load open-source LLM
-llm = HuggingFaceHub(
+llm = ChatHuggingFace(
     repo_id="HuggingFaceH4/zephyr-7b-beta",
     huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
     model_kwargs={"temperature": 0.5, "max_new_tokens": 512}
