@@ -8,7 +8,7 @@ import docx
 import fitz  # PyMuPDF
 import pandas as pd
 from langdetect import detect, LangDetectException
-import language_tool_python
+from gingerit.gingerit import GingerIt  # Replaced language-tool-python with gingerit
 from dotenv import load_dotenv
 from typing import Tuple, List
 
@@ -34,7 +34,7 @@ st.sidebar.header("Configuration")
 max_score = st.sidebar.selectbox("Maximum Score", [5, 10, 20, 50, 100], index=0)
 level = st.sidebar.selectbox("Student Level", ["Beginner", "Intermediate", "Advanced"], index=0)
 
-# Rubric definitions
+# Rubric definitions (unchanged)
 rubrics = {
     "Beginner": {
         "title": "Beginner Level Rubric",
@@ -77,7 +77,7 @@ def display_rubric(level: str) -> str:
 
 rubric = display_rubric(level)
 
-# Initialize LLM with error handling and fallback
+# Initialize LLM (unchanged)
 def initialize_llm() -> HuggingFaceHub:
     """Initialize the language model with error handling"""
     try:
@@ -96,7 +96,7 @@ def initialize_llm() -> HuggingFaceHub:
 
 llm = initialize_llm()
 
-# Prompt template with improved instructions
+# Prompt template (unchanged)
 prompt = PromptTemplate(
     input_variables=["essay", "criteria", "max_score", "language"],
     template="""As an expert essay evaluator fluent in {language}, please evaluate this essay according to the specified rubric. 
@@ -124,7 +124,7 @@ Please provide your evaluation in clear, structured markdown format."""
 
 chain = LLMChain(prompt=prompt, llm=llm)
 
-# Enhanced file handlers with type hints
+# File handlers (unchanged)
 def extract_text_from_pdf(file) -> str:
     """Extract text content from PDF file"""
     try:
@@ -143,38 +143,42 @@ def extract_text_from_docx(file) -> str:
         st.error(f"Error reading DOCX: {str(e)}")
         return ""
 
-# Improved grammar checker with better error handling
+# Updated grammar checker using gingerit
 def highlight_grammar_issues(text: str) -> Tuple[str, List]:
-    """Highlight grammar issues in the text and return matches"""
+    """Highlight grammar issues in the text using gingerit"""
     if not text.strip():
         return "", []
     
     try:
-        lang = detect(text)
-        if lang not in SUPPORTED_LANGUAGES:
-            lang = "en-US"
-    except LangDetectException:
-        lang = "en-US"
-    
-    try:
-        tool = language_tool_python.LanguageTool(lang)
-        matches = tool.check(text)
+        parser = GingerIt()
+        result = parser.parse(text)
         highlighted = text
-        # Process matches in reverse order to avoid offset issues
-        for match in reversed(matches):
-            start = match.offset
-            end = match.offset + match.errorLength
-            suggestion = match.replacements[0] if match.replacements else "No suggestion"
+        corrections = []
+        
+        # Process each correction
+        for mistake in result.get('corrections', []):
+            start = mistake['start']
+            end = mistake['end']
+            suggestion = mistake.get('text', 'No suggestion')
+            
+            # Highlight the mistake
             highlighted = (
                 highlighted[:start] + 
-                f"<span style='background-color: #ffcccc; border-bottom: 1px dashed red;' title='{suggestion}'>{highlighted[start:end]}</span>" + 
+                f"<span style='background-color: #ffcccc; border-bottom: 1px dashed red;' title='Suggested: {suggestion}'>{highlighted[start:end]}</span>" + 
                 highlighted[end:]
             )
-        return highlighted, matches
+            corrections.append({
+                'text': highlighted[start:end],
+                'suggestion': suggestion,
+                'start': start,
+                'end': end
+            })
+        
+        return highlighted, corrections
     except Exception as e:
         st.error(f"Grammar check failed: {str(e)}")
         return text, []
-
+        
 # Essay input section with better UX
 def get_essay_input() -> str:
     """Get essay input from either file upload or text area"""
