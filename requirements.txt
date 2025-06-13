@@ -1,9 +1,10 @@
 streamlit
-langchain>=0.1.0
-langchain-community
+langchain
+langchain_community
 huggingface_hub
+python-dotenv
 python-docx
-pymupdf
+PyMuPDF
 pandas
 langdetect
 language-tool-python
