@@ -10,7 +10,8 @@ pymupdf==1.23.26
 
 # Language tools
 langdetect==1.0.9
-language-tool-python==2.7.1
+#language-tool-python==2.7.1
+gingerit
 
 # Data handling
 pandas==2.2.1
