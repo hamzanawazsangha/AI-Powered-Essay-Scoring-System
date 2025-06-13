@@ -8,9 +8,10 @@ import docx
 import fitz  # PyMuPDF
 import pandas as pd
 from langdetect import detect, LangDetectException
-from textblob import TextBlob  # Replaced gingerit with TextBlob
+from textblob import TextBlob
 from dotenv import load_dotenv
 from typing import Tuple, List
+import re  # for score extraction
 
 # Load environment variables
 load_dotenv()
@@ -69,7 +70,6 @@ rubrics = {
 }
 
 def display_rubric(level: str) -> str:
-    """Display the rubric for the selected level"""
     rubric = rubrics[level]
     st.sidebar.subheader(rubric["title"])
     st.sidebar.write("\n".join(rubric["criteria"]))
@@ -79,7 +79,6 @@ rubric = display_rubric(level)
 
 # Initialize LLM
 def initialize_llm() -> HuggingFaceHub:
-    """Initialize the language model with error handling"""
     try:
         return HuggingFaceHub(
             repo_id="HuggingFaceH4/zephyr-7b-beta",
@@ -96,11 +95,40 @@ def initialize_llm() -> HuggingFaceHub:
 
 llm = initialize_llm()
 
-# Prompt template
+# Prompt template (updated)
 prompt = PromptTemplate(
     input_variables=["essay", "criteria", "max_score", "language"],
-    template="""As an expert essay evaluator fluent in {language}, please evaluate this essay according to the specified rubric. 
+    template="""
+As an expert essay evaluator fluent in {language}, please evaluate this essay according to the rubric.
 
+Return your response **strictly in this markdown structure**:
+---
+**Final Score**: X/{max_score}
+**Grade**: A/B/C/...
+
+**Breakdown**:
+- Grammar and Mechanics: X/X
+- Structure and Organization: X/X
+- Relevance to Topic: X/X
+- Vocabulary Usage: X/X
+- Clarity and Readability: X/X
+
+**Strengths**:
+- Bullet 1
+- Bullet 2
+
+**Areas for Improvement**:
+- Bullet 1
+- Bullet 2
+
+**Grammar/Syntax Issues**:
+- List of issues if any
+
+**Suggestions for Improvement**:
+- Bullet 1
+- Bullet 2
+
+---
 **Essay Language**: {language}
 **Maximum Possible Score**: {max_score}
 **Evaluation Rubric**:
@@ -108,25 +136,13 @@ prompt = PromptTemplate(
 
 **Essay Content**:
 {essay}
-
-**Evaluation Requirements**:
-1. Final Score: [Score]/{max_score} (must be a number between 0 and {max_score})
-2. Detailed Feedback:
-   - Strengths identified (bullet points)
-   - Areas needing improvement (with specific examples)
-   - Grammar/syntax issues found
-   - Suggestions for enhancement
-3. Breakdown of scores per rubric category
-4. Estimated grade level (e.g., A, B, C) if applicable
-
-Please provide your evaluation in clear, structured markdown format."""
+"""
 )
 
 chain = LLMChain(prompt=prompt, llm=llm)
 
 # File handlers
 def extract_text_from_pdf(file) -> str:
-    """Extract text content from PDF file"""
     try:
         with fitz.open(stream=file.read(), filetype="pdf") as doc:
             return " ".join(page.get_text() for page in doc)
@@ -135,7 +151,6 @@ def extract_text_from_pdf(file) -> str:
         return ""
 
 def extract_text_from_docx(file) -> str:
-    """Extract text content from DOCX file"""
     try:
         doc = docx.Document(file)
         return " ".join(para.text for para in doc.paragraphs)
@@ -145,67 +160,62 @@ def extract_text_from_docx(file) -> str:
 
 # Updated grammar checker using TextBlob
 def highlight_grammar_issues(text: str) -> Tuple[str, List]:
-    """Highlight grammar issues in the text using TextBlob"""
     if not text.strip():
         return "", []
-    
     try:
         blob = TextBlob(text)
+        corrected = str(blob.correct())
         corrections = []
         highlighted = text
-        
-        # Get suggested corrections
-        corrected = str(blob.correct())
-        
-        # Simple highlighting of the entire text when corrections exist
         if corrected.lower() != text.lower():
-            highlighted = f"<span style='background-color: #ffcccc;'>Original: {text}</span><br><br><span style='background-color: #ccffcc;'>Suggested: {corrected}</span>"
+            highlighted = (
+                f"<span style='background-color: #ffcccc;'>Original: {text}</span><br><br>"
+                f"<span style='background-color: #ccffcc;'>Suggested: {corrected}</span>"
+            )
             corrections.append({
                 'original': text,
                 'corrected': corrected
             })
-        
         return highlighted, corrections
     except Exception as e:
         st.error(f"Grammar check failed: {str(e)}")
         return text, []
 
-# Essay input section
+# Essay input
 def get_essay_input() -> str:
-    """Get essay input from either file upload or text area"""
     st.subheader("📄 Upload Essay (PDF/DOCX) or Paste Text")
-    uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx"], 
-                                   help="Supported formats: PDF and DOCX")
+    uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx"])
     essay_input = ""
-    
     if uploaded_file:
         with st.spinner("Extracting text from file..."):
             if uploaded_file.name.endswith(".pdf"):
                 essay_input = extract_text_from_pdf(uploaded_file)
             elif uploaded_file.name.endswith(".docx"):
                 essay_input = extract_text_from_docx(uploaded_file)
-    
-    essay_input_manual = st.text_area("Or paste your essay here:", height=300,
-                                    help="Type or paste your essay directly")
+    essay_input_manual = st.text_area("Or paste your essay here:", height=300)
     if essay_input_manual.strip():
         essay_input = essay_input_manual.strip()
-    
     return essay_input
 
 essay_input = get_essay_input()
 
-# Initialize session state for grades storage
+# Session state
 if "grades" not in st.session_state:
     st.session_state.grades = []
 
-# Enhanced evaluation function
+# Score extractor (regex-based)
+def extract_score(text: str) -> str:
+    match = re.search(r"(?i)(?:Final\s*Score|Score)[^\d]*(\d+(?:\.\d+)?)\s*/\s*(\d+)", text)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    return "N/A"
+
+# Evaluation function
 def evaluate_essay() -> None:
-    """Evaluate the essay and store results"""
     if not essay_input.strip():
         st.warning("Please upload or paste an essay first.")
         return
-    
-    # Detect language
+
     with st.spinner("Detecting language..."):
         try:
             detected_lang = detect(essay_input)
@@ -218,8 +228,7 @@ def evaluate_essay() -> None:
         except LangDetectException:
             detected_lang = "en"
             st.warning("Could not detect language, defaulting to English")
-    
-    # Evaluate essay
+
     with st.spinner("Evaluating essay..."):
         try:
             result = chain.run(
@@ -231,38 +240,27 @@ def evaluate_essay() -> None:
         except Exception as e:
             st.error(f"Evaluation failed: {str(e)}")
             st.stop()
-    
-    # Grammar check
+
     with st.spinner("Checking grammar..."):
         highlighted_text, grammar_matches = highlight_grammar_issues(essay_input)
-    
-    # Display results
+
     st.success("✅ Evaluation complete!")
-    
-    # Evaluation summary
+
     st.subheader("📊 Evaluation Summary")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"**Detected Language**: `{SUPPORTED_LANGUAGES.get(detected_lang, 'English')}`")
     with col2:
         st.markdown(f"**Grammar Suggestions**: `{len(grammar_matches)}`")
-    
-    # Grammar highlights
+
     st.subheader("✨ Grammar Suggestions")
     st.markdown(highlighted_text, unsafe_allow_html=True)
-    
-    # Feedback
+
     st.subheader("🗣️ Detailed Feedback")
     st.markdown(result)
-    
-    # Extract score
-    score = "N/A"
-    for line in result.split("\n"):
-        if "Final Score" in line or "Score" in line:
-            score = line.split(":")[-1].strip()
-            break
-    
-    # Store results
+
+    score = extract_score(result)
+
     st.session_state.grades.append({
         "Level": level,
         "Language": SUPPORTED_LANGUAGES.get(detected_lang, "English"),
@@ -274,7 +272,6 @@ def evaluate_essay() -> None:
 
 # Admin Panel functions
 def export_grades() -> None:
-    """Export grades to CSV"""
     if st.session_state.grades:
         df = pd.DataFrame(st.session_state.grades)
         csv = df.to_csv(index=False).encode('utf-8')
@@ -282,22 +279,20 @@ def export_grades() -> None:
             label="Download CSV",
             data=csv,
             file_name="essay_grades.csv",
-            mime="text/csv",
-            help="Download all evaluation results as CSV"
+            mime="text/csv"
         )
     else:
         st.sidebar.warning("No grades to export yet.")
 
 def clear_grades() -> None:
-    """Clear all stored grades"""
     st.session_state.grades = []
     st.sidebar.success("Grades cleared!")
 
-# Main execution flow
+# Main logic
 if st.button("Evaluate Essay", help="Start the evaluation process"):
     evaluate_essay()
 
-# Admin Panel
+# Admin panel
 st.sidebar.header("📁 Admin Panel")
 st.sidebar.button("Export Grades", on_click=export_grades)
 st.sidebar.button("Clear Grades", on_click=clear_grades)
