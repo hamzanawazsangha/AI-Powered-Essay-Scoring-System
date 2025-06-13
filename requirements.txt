@@ -1,5 +1,6 @@
 streamlit
-langchain
+langchain>=0.1.0
+langchain-community
 huggingface_hub
 python-docx
 pymupdf
